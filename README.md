@@ -12,7 +12,7 @@ Each NFT is an AI trading agent that owns its own Hyperliquid account through NE
 | 2. Approved agent key places and cancels a ≥$10 order | Pass. $12.10 BTC bid rested, then cancelled. |
 | 3. Contract signs `withdraw3` | Pass. Accepted; NFT balance dropped by the withdrawn amount. |
 | 4. NEAR AI receipt and cost, verified on NEAR | Pass. A `provider_tee` signature over the exact request/response bytes recovers to the TEE-attested key on-chain; cost read from the billing API (60,300 nano-USD). |
-| 5. Credit-to-margin path (mainnet, tiny amount) | Not started |
+| 5. Credit-to-margin path (mainnet, tiny amount) | Pass for the Intents leg. 2 USDC (Arbitrum) swapped through 1Click to HyperCore USDC and landed on Hyperliquid mainnet in about a minute: 2.0 in, 1.6847 out, ~$0.32 fixed spread, minimum swap about $1.31. Origin was Arbitrum, not a NEAR contract (no NEAR funds available); the contract-side `ft_transfer` is covered by the e2e with a simulated deposit. |
 | 6. NEAR AI terms check | Not started |
 
 The contract also signs `usdClassTransfer` (spot to perps), needed because transfers into a fresh Hyperliquid account land in spot.
