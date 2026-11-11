@@ -36,15 +36,7 @@ impl Conversion {
         match self {
             Conversion::Simulated { deposit_account, funder } => {
                 near.call(contract, "release_margin", json!({"token_id": ctx.token_id, "deposit_address": deposit_account}), 100, 0).await?;
-                let meta = hl.info(json!({"type": "spotMeta"})).await?;
-                let tok = meta["tokens"].as_array().and_then(|t| t.iter().find(|x| x["name"] == "USDC")).context("USDC spot token")?;
-                let token = format!("USDC:{}", tok["tokenId"].as_str().context("tokenId")?);
-                let ex = ExchangeClient::new(None, funder.clone(), Some(BaseUrl::Testnet), None, None).await.map_err(|e| anyhow::anyhow!("{e}"))?;
-                let r = ex.spot_transfer(&usdc(amount_micro), &ctx.address, &token, None).await.map_err(|e| anyhow::anyhow!("{e}"))?;
-                if let ExchangeResponseStatus::Err(e) = r {
-                    bail!("funder transfer failed: {e}");
-                }
-                wait_spot(hl, &ctx.address, amount_micro).await?;
+                funder_pay(funder, hl, &ctx.address, amount_micro).await?;
                 hl.deposit(ctx, &usdc(amount_micro)).await?;
                 Ok(format!("released {} credits; funder paid the agent's Hyperliquid account (simulated); moved to perps", usdc(amount_micro)))
             }
@@ -75,6 +67,19 @@ impl Conversion {
             }
         }
     }
+}
+
+// Testnet stand-in for the Intents payout: the funder sends USDC to the agent's Hyperliquid spot balance.
+pub async fn funder_pay(funder: &LocalWallet, hl: &Hyperliquid, address: &str, amount_micro: u64) -> Result<()> {
+    let meta = hl.info(json!({"type": "spotMeta"})).await?;
+    let tok = meta["tokens"].as_array().and_then(|t| t.iter().find(|x| x["name"] == "USDC")).context("USDC spot token")?;
+    let token = format!("USDC:{}", tok["tokenId"].as_str().context("tokenId")?);
+    let ex = ExchangeClient::new(None, funder.clone(), Some(BaseUrl::Testnet), None, None).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let r = ex.spot_transfer(&usdc(amount_micro), address, &token, None).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    if let ExchangeResponseStatus::Err(e) = r {
+        bail!("funder transfer failed: {e}");
+    }
+    wait_spot(hl, address, amount_micro).await
 }
 
 async fn wait_spot(hl: &Hyperliquid, address: &str, at_least_micro: u64) -> Result<()> {

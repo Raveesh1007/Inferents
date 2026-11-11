@@ -71,6 +71,23 @@ impl Hyperliquid {
         mids.get(coin).map(f).filter(|p| *p > 0.0).with_context(|| format!("no mid for {coin}"))
     }
 
+    // Testnet oracles can lag the book badly; Hyperliquid rejects orders priced far from the oracle, so skip such coins.
+    pub async fn tradable_coins(&self, coins: &[&str]) -> Result<Vec<String>> {
+        let r = self.info(json!({"type": "metaAndAssetCtxs"})).await?;
+        let universe = r[0]["universe"].as_array().context("universe")?;
+        let ctxs = r[1].as_array().context("asset contexts")?;
+        Ok(coins
+            .iter()
+            .filter(|c| {
+                universe.iter().position(|u| u["name"] == **c).is_some_and(|i| {
+                    let (mid, oracle) = (f(&ctxs[i]["midPx"]), f(&ctxs[i]["oraclePx"]));
+                    oracle > 0.0 && mid > 0.0 && (mid - oracle).abs() / oracle < 0.03
+                })
+            })
+            .map(|c| c.to_string())
+            .collect())
+    }
+
     pub async fn recent_closes(&self, coin: &str, hours: u64) -> Result<Vec<f64>> {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u64;
         let req = json!({"coin": coin, "interval": "1h", "startTime": now - (hours + 1) * 3_600_000, "endTime": now});

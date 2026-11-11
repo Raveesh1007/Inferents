@@ -62,6 +62,25 @@ async fn main() -> Result<()> {
             let w = funder_wallet(".secrets/funder.key")?;
             println!("funder Hyperliquid address: {:?}", w.address());
         }
+        Some("fund") => {
+            let r = build()?;
+            let id = args.get(2).context("usage: fund <token_id> <usdc>")?;
+            let amount: f64 = args.get(3).context("usage: fund <token_id> <usdc>")?.parse()?;
+            println!("{}", r.fund(id, (amount * 1e6).round() as u64).await?);
+        }
+        Some("show") => {
+            let v = Vault::open(&env("VAULT_DIR", ".secrets/vault"), ".secrets/vault.key")?;
+            let id = args.get(2).context("usage: show <token_id> [n]")?;
+            let ids = v.list(id)?;
+            let n: usize = args.get(3).map_or(1, |x| x.parse().unwrap_or(1));
+            for rid in ids.iter().rev().take(n) {
+                let e = v.load(id, rid)?;
+                println!("request {rid}
+  summary: {}
+  reason:  {}
+  reply:   {}", e["summary"], e["reason"], e["content"].as_str().unwrap_or("").chars().take(400).collect::<String>());
+            }
+        }
         Some("tick") => {
             let r = build()?;
             println!("conversion mode: {}", r.conversion.label());
@@ -82,7 +101,7 @@ async fn main() -> Result<()> {
                 tokio::time::sleep(every).await;
             }
         }
-        _ => bail!("usage: inferents-runner funder | tick <token_id> | serve"),
+        _ => bail!("usage: inferents-runner funder | fund <token_id> <usdc> | tick <token_id> | serve"),
     }
     Ok(())
 }

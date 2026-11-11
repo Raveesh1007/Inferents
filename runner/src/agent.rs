@@ -96,28 +96,25 @@ impl Runner {
         }
 
         let max_leverage = a["max_leverage"].as_u64().unwrap_or(1) as u32;
-        let prompt = self.market_prompt(&positions.positions, positions.account_value, max_leverage).await?;
+        let allowed = self.hl.tradable_coins(&COINS).await?;
+        let prompt = self.market_prompt(&allowed, &positions.positions, positions.account_value, max_leverage).await?;
         let thought = self.ai.think(strategy::SYSTEM_PROMPT, &prompt, self.max_tokens).await?;
-        let decision = strategy::parse_decision(&thought.content);
-        let plan = decision.as_ref().map_or(Plan::Hold("model reply was not a valid decision".into()), |d| strategy::plan(d, positions.account_value, max_leverage, &positions.positions));
 
-        let mut order_id = None;
-        let summary = match &plan {
-            Plan::Open { coin, is_buy, notional, leverage } => {
-                let f = self.hl.place_order(&ctx, coin, *is_buy, *notional, *leverage).await?;
-                order_id = Some(f.order_id.clone());
-                format!("{} {coin} ${notional:.2} at {leverage}x, oid {} @ {}", if *is_buy { "LONG" } else { "SHORT" }, f.order_id, f.avg_px)
-            }
-            Plan::Close { coin } => {
-                let fills = self.hl.close_all(&ctx).await?;
-                order_id = fills.first().map(|f| f.order_id.clone());
-                format!("CLOSE {coin} ({} fill(s))", fills.len())
-            }
-            Plan::Hold(why) => format!("HOLD: {why}"),
-        };
-
+        // The model call is paid for whether or not the trade happens, so it is charged first.
         let cost = thought.cost_micro_usd.min(MAX_COST_PER_REQUEST);
         self.near.call(&self.contract, "report_usage", json!({"token_id": token_id, "request_ids": [thought.request_id], "cost_micro_usd": cost.to_string()}), 30, 0).await?;
+
+        let decision = strategy::parse_decision(&thought.content);
+        let plan = decision.as_ref().map_or(Plan::Hold("model reply was not a valid decision".into()), |d| strategy::plan(d, positions.account_value, max_leverage, &positions.positions, &allowed));
+        let executed: Result<(Option<String>, String)> = match &plan {
+            Plan::Open { coin, is_buy, notional, leverage } => self.hl.place_order(&ctx, coin, *is_buy, *notional, *leverage).await.map(|f| {
+                (Some(f.order_id.clone()), format!("{} {coin} ${notional:.2} at {leverage}x, oid {} @ {}", if *is_buy { "LONG" } else { "SHORT" }, f.order_id, f.avg_px))
+            }),
+            Plan::Close { coin } => self.hl.close_all(&ctx).await.map(|fills| (fills.first().map(|f| f.order_id.clone()), format!("CLOSE {coin} ({} fill(s))", fills.len()))),
+            Plan::Hold(why) => Ok((None, format!("HOLD: {why}"))),
+        };
+        let (order_id, summary) = executed.unwrap_or_else(|e| (None, format!("ORDER FAILED, holding: {e:#}")));
+
         if let Some(oid) = &order_id {
             let receipt = json!({"receipt": {"token_id": token_id, "order_id": oid, "request_id": thought.request_id, "model": thought.model,
                 "request_hash": thought.request_hash, "response_hash": thought.response_hash, "signature": thought.signature, "verified": false}});
@@ -130,7 +127,7 @@ impl Runner {
             &json!({"request_id": thought.request_id, "chat_id": thought.chat_id, "order_id": order_id, "summary": summary, "reason": decision.as_ref().map(|d| d.reason.clone()),
                 "content": thought.content, "reasoning": thought.reasoning, "at_ns": now.to_string()}),
         )?;
-        Ok(format!("{summary} | thinking cost {} micro-USD", cost))
+        Ok(format!("{summary} | thinking cost {cost} micro-USD"))
     }
 
     async fn report_pnl(&self, ctx: &AgentCtx) -> Result<()> {
@@ -139,9 +136,9 @@ impl Runner {
         Ok(())
     }
 
-    async fn market_prompt(&self, positions: &[crate::hl::Position], margin: f64, max_leverage: u32) -> Result<String> {
+    async fn market_prompt(&self, allowed: &[String], positions: &[crate::hl::Position], margin: f64, max_leverage: u32) -> Result<String> {
         let mut s = String::from("Market (price now, then last hourly closes):\n");
-        for coin in COINS {
+        for coin in allowed {
             let closes = self.hl.recent_closes(coin, 8).await.unwrap_or_default();
             s += &format!("{coin}: {:.2}, closes {:?}\n", self.hl.mid(coin).await?, closes.iter().map(|c| (c * 100.0).round() / 100.0).collect::<Vec<_>>());
         }
@@ -153,6 +150,17 @@ impl Runner {
             s += &format!("Open position: {} size {} entry {} unrealised PnL ${:.2}\n", p.coin, p.size, p.entry_px, p.unrealized);
         }
         Ok(s)
+    }
+
+    // Testnet only: tops an agent's Hyperliquid margin up from the funder wallet.
+    pub async fn fund(&self, token_id: &str, amount_micro: u64) -> Result<String> {
+        let Conversion::Simulated { funder, .. } = &self.conversion else { anyhow::bail!("fund is a testnet helper; CONVERSION must be simulated") };
+        let a = self.near.view(&self.contract, "agent", json!({"token_id": token_id})).await?;
+        let address = a["hl_address"].as_str().filter(|x| !x.is_empty()).context("agent has no Hyperliquid address yet")?;
+        crate::conversion::funder_pay(funder, &self.hl, address, amount_micro).await?;
+        let signed = self.near.call(&self.contract, "usd_class_transfer", json!({"token_id": token_id, "amount": usdc(amount_micro), "to_perp": true}), 300, 0).await?;
+        self.hl.submit_admin(&signed).await?;
+        Ok(format!("agent {token_id} ({address}) funded with ${} margin", usdc(amount_micro)))
     }
 
     pub async fn owed_summary(&self, token_id: &str) -> Result<String> {

@@ -6,7 +6,7 @@ pub const COINS: [&str; 3] = ["BTC", "ETH", "SOL"];
 pub const SYSTEM_PROMPT: &str = "You are an autonomous perpetual-futures trading agent on Hyperliquid. \
 Decide one action from the market data. Reply with a single JSON object and nothing else: \
 {\"action\":\"open_long\"|\"open_short\"|\"close\"|\"hold\",\"coin\":\"BTC\"|\"ETH\"|\"SOL\",\"size_pct\":1-100,\"reason\":\"one sentence\"}. \
-size_pct is the share of your allowed position size to use. Prefer hold when there is no clear edge.";
+size_pct is the share of your allowed position size to use. Trade actively: with no open position, open one in the direction of the recent hourly trend; with an open position, close it if the trend has turned against it; hold only when closes are essentially flat.";
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
@@ -74,11 +74,11 @@ fn from_json(v: &Value) -> Option<Decision> {
 }
 
 // The risk budget: position size is bounded by the margin the agent actually has and the leverage cap its owner set.
-pub fn plan(d: &Decision, margin_usd: f64, max_leverage: u32, positions: &[Position]) -> Plan {
+pub fn plan(d: &Decision, margin_usd: f64, max_leverage: u32, positions: &[Position], allowed: &[String]) -> Plan {
     if d.action == Action::Hold {
         return Plan::Hold("model chose to hold".into());
     }
-    if !COINS.contains(&d.coin.as_str()) {
+    if !allowed.iter().any(|c| *c == d.coin) {
         return Plan::Hold(format!("coin {} is not tradable", d.coin));
     }
     let has_position = positions.iter().any(|p| p.coin == d.coin);
@@ -105,6 +105,10 @@ mod tests {
         Position { coin: coin.into(), size: 0.1, entry_px: 1.0, unrealized: 0.0 }
     }
 
+    fn all() -> Vec<String> {
+        COINS.iter().map(|c| c.to_string()).collect()
+    }
+
     fn d(action: Action, coin: &str, pct: f64) -> Decision {
         Decision { action, coin: coin.into(), size_pct: pct, reason: String::new() }
     }
@@ -120,24 +124,31 @@ mod tests {
 
     #[test]
     fn open_size_scales_with_margin_and_leverage_cap() {
-        let Plan::Open { notional, leverage, is_buy, .. } = plan(&d(Action::OpenShort, "ETH", 100.0), 20.0, 3, &[]) else { panic!() };
+        let Plan::Open { notional, leverage, is_buy, .. } = plan(&d(Action::OpenShort, "ETH", 100.0), 20.0, 3, &[], &all()) else { panic!() };
         assert_eq!((leverage, is_buy), (3, false));
         assert!((notional - 54.0).abs() < 1e-9);
-        let Plan::Open { notional: half, .. } = plan(&d(Action::OpenLong, "ETH", 50.0), 20.0, 3, &[]) else { panic!() };
+        let Plan::Open { notional: half, .. } = plan(&d(Action::OpenLong, "ETH", 50.0), 20.0, 3, &[], &all()) else { panic!() };
         assert!((half - 27.0).abs() < 1e-9);
     }
 
     #[test]
     fn waits_until_margin_covers_the_minimum_order() {
-        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 100.0), 3.0, 3, &[]), Plan::Hold(_)));
-        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 100.0), 4.0, 3, &[]), Plan::Open { .. }));
+        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 100.0), 3.0, 3, &[], &all()), Plan::Hold(_)));
+        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 100.0), 4.0, 3, &[], &all()), Plan::Open { .. }));
+    }
+
+    #[test]
+    fn coins_with_a_stale_oracle_are_not_tradable() {
+        let only_btc = vec!["BTC".to_string()];
+        assert!(matches!(plan(&d(Action::OpenLong, "SOL", 50.0), 100.0, 3, &[], &only_btc), Plan::Hold(_)));
+        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 50.0), 100.0, 3, &[], &only_btc), Plan::Open { .. }));
     }
 
     #[test]
     fn refuses_untradable_coins_pyramiding_and_phantom_closes() {
-        assert!(matches!(plan(&d(Action::OpenLong, "DOGE", 10.0), 100.0, 3, &[]), Plan::Hold(_)));
-        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 10.0), 100.0, 3, &[pos("ETH")]), Plan::Hold(_)));
-        assert!(matches!(plan(&d(Action::Close, "BTC", 0.0), 100.0, 3, &[]), Plan::Hold(_)));
-        assert_eq!(plan(&d(Action::Close, "ETH", 0.0), 100.0, 3, &[pos("ETH")]), Plan::Close { coin: "ETH".into() });
+        assert!(matches!(plan(&d(Action::OpenLong, "DOGE", 10.0), 100.0, 3, &[], &all()), Plan::Hold(_)));
+        assert!(matches!(plan(&d(Action::OpenLong, "BTC", 10.0), 100.0, 3, &[pos("ETH")], &all()), Plan::Hold(_)));
+        assert!(matches!(plan(&d(Action::Close, "BTC", 0.0), 100.0, 3, &[], &all()), Plan::Hold(_)));
+        assert_eq!(plan(&d(Action::Close, "ETH", 0.0), 100.0, 3, &[pos("ETH")], &all()), Plan::Close { coin: "ETH".into() });
     }
 }
