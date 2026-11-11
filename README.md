@@ -17,7 +17,17 @@ Each NFT is an AI trading agent that owns its own Hyperliquid account through NE
 
 The contract also signs `usdClassTransfer` (spot to perps), needed because transfers into a fresh Hyperliquid account land in spot.
 
-Testnet contract: `inferents-11111630.testnet` (MPC signer `v1.signer-prod.testnet`).
+## Testnet deployment
+
+| What | Account |
+| --- | --- |
+| Agent contract | `inferents-11111630.testnet` |
+| Mock USDC (6 decimals, anyone can `mint`; stands in for Circle USDC) | `usdc.inferents-11111630.testnet` |
+| MPC signer | `v1.signer-prod.testnet` |
+
+Verified on testnet: mint an agent with `ft_transfer_call` (`{"action":"mint","max_leverage":3}`), the contract derives the agent's Hyperliquid address from the MPC key, runner usage reports debit credits (replays rejected), and `release_margin` after the epoch sends the unused credits out and keeps reserve >= credits + treasury.
+
+Defaults chosen during the build (change with owner calls): resale royalty 5% to the minter, viewing-key revenue to the agent's credits, epoch 7 days (60 s in the testnet demo), minimum mint $20 (1 USDC on testnet).
 
 ## Try it
 

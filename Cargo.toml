@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "runner"]
+members = ["contract", "runner", "mock-usdc"]
 
 [workspace.package]
 edition = "2024"
