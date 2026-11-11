@@ -1,0 +1,15 @@
+[package]
+name = "inferents-runner"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+alloy = { version = "1.6", features = ["signer-local", "dyn-abi", "eip712"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+anyhow = "1"
+dotenvy = "0.15"
+bs58 = "0.5"
+base64 = "0.22"
