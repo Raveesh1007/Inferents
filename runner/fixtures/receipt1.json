@@ -1,0 +1,11 @@
+{
+  "chat_id": "chatcmpl-4baeaa08-5559-41ef-9bf0-3dd3ee631d99",
+  "cost_nano_usd": 60300,
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  "request_hash": "cc5d9658257aa1f871c69f787262d5781482af70cac006379bd4f693caac3053",
+  "request_id": "ddd71d9b-4cc4-527b-976d-b339111fa43a",
+  "response_hash": "5d37fb4f38040df6cc6f27da1f2815f992d1f5def6fa5babfc42b9da46283983",
+  "signature": "0xd472a8d834fd1b0d3b9f47de2df563e380c02a8dcf10ac139c714be22693a73071107eaf5d4afd848150c5d401f4cbe4f55edf25ae8dd310bb1d518e19b3792a1b",
+  "signing_address": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+  "text": "deepseek-ai/DeepSeek-V4.1-Flash-1017:cc5d9658257aa1f871c69f787262d5781482af70cac006379bd4f693caac3053:5d37fb4f38040df6cc6f27da1f2815f992d1f5def6fa5babfc42b9da46283983"
+}

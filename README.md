@@ -11,7 +11,7 @@ Each NFT is an AI trading agent that owns its own Hyperliquid account through NE
 | 1. Contract signs Hyperliquid `approveAgent` via Chain Signatures | Pass. Hyperliquid testnet accepted it for NFT #1's derived address. |
 | 2. Approved agent key places and cancels a ≥$10 order | Pass. $12.10 BTC bid rested, then cancelled. |
 | 3. Contract signs `withdraw3` | Pass. Accepted; NFT balance dropped by the withdrawn amount. |
-| 4. NEAR AI receipt and cost, verified on NEAR | Not started |
+| 4. NEAR AI receipt and cost, verified on NEAR | Pass. A `provider_tee` signature over the exact request/response bytes recovers to the TEE-attested key on-chain; cost read from the billing API (60,300 nano-USD). |
 | 5. Credit-to-margin path (mainnet, tiny amount) | Not started |
 | 6. NEAR AI terms check | Not started |
 
@@ -36,7 +36,11 @@ cargo run -p inferents-runner --bin gonogo_approve -- submit 1 signed.json
 # -> recovered == derived; Hyperliquid answers {"status":"ok"}
 cargo run -p inferents-runner --bin gonogo_order -- 1
 # -> order resting, then cancelled, signed by the approved agent key
+cargo run -p inferents-runner --bin gonogo_receipt   # needs NEAR_AI_API_KEY in .env
+# -> recovered signer == attested signing_address, cost in nano-USD
 ```
+
+On-chain receipts: `near contract call-function as-read-only inferents-11111630.testnet receipts json-args '{"from_index":0,"limit":10}' network-config testnet now`
 
 ## Implementation notes
 
