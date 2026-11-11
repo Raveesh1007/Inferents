@@ -79,6 +79,39 @@ impl Contract {
             .then(Self::ext(env::current_account_id()).with_static_gas(Gas::from_tgas(10)).on_signed(action, nonce))
     }
 
+    pub fn usd_class_transfer(&mut self, token_id: String, amount: String, to_perp: bool) -> Promise {
+        require!(env::predecessor_account_id() == self.owner, "owner only");
+        let nonce = env::block_timestamp_ms();
+        let hash = hl::usd_class_transfer_digest(&self.hl_chain, &amount, to_perp, nonce);
+        let action = json!({
+            "type": "usdClassTransfer",
+            "signatureChainId": "0x66eee",
+            "hyperliquidChain": self.hl_chain,
+            "amount": amount,
+            "toPerp": to_perp,
+            "nonce": nonce,
+        });
+        self.mpc_sign(&agent_path(&token_id), hash)
+            .then(Self::ext(env::current_account_id()).with_static_gas(Gas::from_tgas(10)).on_signed(action, nonce))
+    }
+
+    pub fn withdraw(&mut self, token_id: String, amount: String, destination: String) -> Promise {
+        require!(env::predecessor_account_id() == self.owner, "owner only");
+        let dest = hl::parse_address(&destination);
+        let time = env::block_timestamp_ms();
+        let hash = hl::withdraw_digest(&self.hl_chain, &dest, &amount, time);
+        let action = json!({
+            "type": "withdraw3",
+            "signatureChainId": "0x66eee",
+            "hyperliquidChain": self.hl_chain,
+            "destination": format!("0x{}", hex::encode(dest)),
+            "amount": amount,
+            "time": time,
+        });
+        self.mpc_sign(&agent_path(&token_id), hash)
+            .then(Self::ext(env::current_account_id()).with_static_gas(Gas::from_tgas(10)).on_signed(action, time))
+    }
+
     #[private]
     pub fn on_signed(
         &self,
