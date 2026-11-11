@@ -57,3 +57,27 @@ On-chain receipts: `near contract call-function as-read-only inferents-11111630.
 - The contract builds the EIP-712 hash itself (`contract/src/hl.rs`), so the MPC only ever signs actions the contract constructed.
 - The `approveAgent` nonce is the block timestamp in ms, chosen by the contract.
 - Windows builds: `cargo near build non-reproducible-wasm --no-abi` (ABI step fails to link with MSVC); `.cargo/config.toml` sets `AWS_LC_SYS_PREBUILT_NASM`.
+
+## Runner
+
+Rust service (`runner/`) that runs the agents. Config comes from `.env` (see `.env.example`).
+
+```sh
+cargo run -p inferents-runner --bin inferents-runner -- funder          # testnet funder wallet address
+cargo run -p inferents-runner --bin inferents-runner -- fund 2 50      # give agent 2 $50 testnet margin
+cargo run -p inferents-runner --bin inferents-runner -- tick 2         # one think/trade/report pass
+cargo run -p inferents-runner --bin inferents-runner -- show 2         # latest decision from the encrypted vault
+cargo run -p inferents-runner --bin inferents-runner -- serve          # loop over all agents
+```
+
+Per pass the runner: rotates the trade-only key if the NFT changed hands, flattens before the epoch ends, converts unused credits to margin after it ends, otherwise reads the market, asks the TEE-verified model, applies the risk limits, trades, charges the thinking cost on NEAR and stores the signed receipt.
+
+Verified on testnet:
+- Agent 2 (10 USDC of credits) opened a real BTC short sized by its margin and leverage cap; usage was charged, the receipt verified on-chain against the attested model key, and credits + treasury stayed equal to the reserve.
+- Agent 1's epoch ended: its unused credits were burned and paid into its Hyperliquid account, then moved to perps (perps balance 44 to 49).
+
+Choices made during the build:
+- **Testnet conversion is simulated.** NEAR Intents is mainnet-only, so on testnet a funder wallet pays the agent's Hyperliquid account where Intents would. The runner logs `SIMULATED`. `CONVERSION=live` uses the real 1Click flow (verified separately on mainnet with a 2 USDC swap).
+- **Coins with a stale oracle are skipped.** Hyperliquid rejects orders priced far from the oracle, and some testnet oracles lag the book.
+- **Thinking is charged before trading,** because the model call is paid for either way. A rejected order becomes a hold.
+- **The prompt asks the model to trade actively** (follow the hourly trend, hold only when flat); the risk limits, not the prompt, bound the downside.
