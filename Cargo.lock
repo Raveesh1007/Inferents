@@ -4085,6 +4085,7 @@ name = "inferents-contract"
 version = "0.1.0"
 dependencies = [
  "alloy-dyn-abi",
+ "bs58 0.5.1",
  "hex",
  "near-sdk",
  "serde_json",
