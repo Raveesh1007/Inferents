@@ -81,3 +81,9 @@ Choices made during the build:
 - **Coins with a stale oracle are skipped.** Hyperliquid rejects orders priced far from the oracle, and some testnet oracles lag the book.
 - **Thinking is charged before trading,** because the model call is paid for either way. A rejected order becomes a hold.
 - **The prompt asks the model to trade actively** (follow the hourly trend, hold only when flat); the risk limits, not the prompt, bound the downside.
+
+## Models
+
+The agent thinks with `AI_MODEL` (default `deepseek-ai/DeepSeek-V4.1-Flash-1017`). A model can be used only if NEAR AI serves it inside its own TEE with an ECDSA `signing_address`, because the contract verifies each receipt by `ecrecover` against that key. Five such chat models are registered on the contract: DeepSeek-V4.1-Flash, Qwen3.6-35B-A3B, Qwen3.8-27B, Qwen3-VL-30B-A3B and GLM-5.3-flash. DeepSeek-V3.2, Kimi K2.6/K3 and GLM-5.3 run on third-party TEE providers whose attestation has no such key, so their receipts cannot be verified this way.
+
+`cargo run -p inferents-runner --bin modelcompare` gives every model the same market snapshot and prints verification, latency, cost and decision. In one run all five verified; they differ in cost per decision (84 to 1,639 micro-USD) and speed (3.5 to 28 s). Reasoning-heavy models can spend the whole token budget on hidden reasoning and return an empty reply (seen once with Qwen3.6 at 1,500 tokens), so DeepSeek stays the default and `MAX_TOKENS` should be raised when switching.
