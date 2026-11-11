@@ -1,0 +1,88 @@
+use anyhow::{Context, Result, bail};
+use ethers::signers::{LocalWallet, Signer};
+use inferents_runner::agent::Runner;
+use inferents_runner::ai::Ai;
+use inferents_runner::conversion::Conversion;
+use inferents_runner::hl::Hyperliquid;
+use inferents_runner::near::Near;
+use inferents_runner::vault::Vault;
+use std::sync::Arc;
+use std::time::Duration;
+
+fn env(k: &str, default: &str) -> String {
+    std::env::var(k).unwrap_or_else(|_| default.to_owned())
+}
+
+fn funder_wallet(path: &str) -> Result<LocalWallet> {
+    if let Ok(h) = std::fs::read_to_string(path) {
+        return Ok(h.trim().parse()?);
+    }
+    let w = LocalWallet::new(&mut ethers::core::rand::thread_rng());
+    std::fs::create_dir_all(".secrets")?;
+    std::fs::write(path, hex::encode(w.signer().to_bytes()))?;
+    Ok(w)
+}
+
+fn build() -> Result<Runner> {
+    dotenvy::dotenv().ok();
+    let account = env("NEAR_ACCOUNT_ID", "inferents-11111630.testnet");
+    let contract = env("CONTRACT_ID", &account);
+    let rpc = env("NEAR_RPC", "https://rpc.testnet.near.org");
+    let near = Arc::new(match std::env::var("NEAR_PRIVATE_KEY") {
+        Ok(k) => Near::new(&rpc, &account, &k)?,
+        Err(_) => {
+            let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME"))?;
+            Near::from_credentials_file(&rpc, &account, &env("NEAR_CREDENTIALS_FILE", &format!("{home}/.near-credentials/testnet/{account}.json")))?
+        }
+    });
+    let testnet = env("HL_NETWORK", "testnet") == "testnet";
+    let conversion = match env("CONVERSION", "simulated").as_str() {
+        "simulated" => Conversion::Simulated { deposit_account: env("SIM_DEPOSIT_ACCOUNT", &format!("funder.{contract}")), funder: funder_wallet(".secrets/funder.key")? },
+        "live" => Conversion::Live { refund_to: std::env::var("NEAR_REFUND_ACCOUNT").context("NEAR_REFUND_ACCOUNT")?, jwt: std::env::var("ONECLICK_JWT").ok() },
+        other => bail!("CONVERSION must be simulated or live, got {other}"),
+    };
+    Ok(Runner {
+        hl: Hyperliquid::new(testnet, near.clone(), &contract),
+        near,
+        contract,
+        ai: Ai::new(std::env::var("NEAR_AI_API_KEY").context("NEAR_AI_API_KEY")?, env("AI_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash-1017")),
+        vault: Vault::open(&env("VAULT_DIR", ".secrets/vault"), ".secrets/vault.key")?,
+        conversion,
+        keys_dir: ".secrets".into(),
+        flat_window_ns: env("FLAT_WINDOW_SECS", "15").parse::<u64>()? * 1_000_000_000,
+        max_tokens: env("MAX_TOKENS", "1500").parse()?,
+    })
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    match args.get(1).map(String::as_str) {
+        Some("funder") => {
+            let w = funder_wallet(".secrets/funder.key")?;
+            println!("funder Hyperliquid address: {:?}", w.address());
+        }
+        Some("tick") => {
+            let r = build()?;
+            println!("conversion mode: {}", r.conversion.label());
+            let id = args.get(2).context("usage: tick <token_id>")?;
+            println!("agent {id}: {}", r.tick(id).await?);
+        }
+        Some("serve") => {
+            let r = build()?;
+            let every = Duration::from_secs(env("LOOP_SECS", "30").parse()?);
+            println!("runner started, conversion mode: {}, every {every:?}", r.conversion.label());
+            loop {
+                for id in r.agent_ids().await.unwrap_or_default() {
+                    match r.tick(&id).await {
+                        Ok(s) => println!("agent {id}: {s}"),
+                        Err(e) => eprintln!("agent {id}: error: {e:#}"),
+                    }
+                }
+                tokio::time::sleep(every).await;
+            }
+        }
+        _ => bail!("usage: inferents-runner funder | tick <token_id> | serve"),
+    }
+    Ok(())
+}
