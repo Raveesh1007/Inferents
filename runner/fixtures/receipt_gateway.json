@@ -1,0 +1,11 @@
+{
+  "chat_id": "msg_011CgxNAb6bXk4zj5DAzpwnj",
+  "model": "anthropic/claude-sonnet-5-5",
+  "request_body": "{\"max_tokens\":400,\"messages\":[{\"content\":\"Reply with one word: BTC bullish or bearish?\",\"role\":\"user\"}],\"model\":\"anthropic/claude-sonnet-5-5\"}",
+  "request_hash": "20f3fafffe5c970b7feb927a831d1a4ad1e9837fffe8157990ff1c9f14ad465c",
+  "request_id": "13a55da4-57d3-5a93-b08f-263e83f9b935",
+  "response_hash": "ab1436150ae3df1427aad173a52ac01bcd0ac98ee1748f37cff3c8d6fb56d4bf",
+  "signature": "0x5fa602ca08253bf3ef5bfac718297f748c82abdfac6160b7ebe21852ce8d27fd54a7878942952e4ebcb9558cf4a809f29ff8354a194122af1f53ed9afd1dc6fa1b",
+  "signing_address": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+  "text": "20f3fafffe5c970b7feb927a831d1a4ad1e9837fffe8157990ff1c9f14ad465c:ab1436150ae3df1427aad173a52ac01bcd0ac98ee1748f37cff3c8d6fb56d4bf"
+}
