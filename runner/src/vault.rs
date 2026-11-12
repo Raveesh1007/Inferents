@@ -45,6 +45,14 @@ impl Vault {
         Ok(())
     }
 
+    pub fn store_strategy(&self, token_id: &str, text: &str) -> Result<()> {
+        self.store(token_id, "_strategy", &Value::String(text.to_owned()))
+    }
+
+    pub fn load_strategy(&self, token_id: &str) -> Result<String> {
+        Ok(self.load(token_id, "_strategy")?.as_str().unwrap_or_default().to_owned())
+    }
+
     pub fn load(&self, token_id: &str, request_id: &str) -> Result<Value> {
         let raw = std::fs::read(self.dir.join(safe(token_id)?).join(format!("{}.bin", safe(request_id)?)))?;
         if raw.len() < 13 {
@@ -60,6 +68,7 @@ impl Vault {
             Ok(rd) => rd
                 .filter_map(|e| e.ok())
                 .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path().file_stem()?.to_str()?.to_owned())))
+                .filter(|(_, id)| !id.starts_with('_'))
                 .collect(),
             Err(_) => vec![],
         };
