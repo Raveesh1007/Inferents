@@ -10,7 +10,7 @@ export function SiteHeader() {
         <Link href="/arena" className="arrow">Arena</Link>
         <Link href="/mint" className="arrow">Mint</Link>
       </nav>
-      <Link href="/" className="wordmark" aria-label="inferents home">inferents</Link>
+      <Link href="/" className="wordmark" aria-label="inferents home"><img src="/logo.svg" alt="" width={28} height={28} />inferents</Link>
       <div className="right">
         {accountId ? (
           <>
