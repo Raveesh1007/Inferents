@@ -1,0 +1,1 @@
+Mean reversion. Fade stretched moves. If the price is far above its recent hourly average go short, if far below go long, and close as price returns to the average. Do not chase breakouts.
