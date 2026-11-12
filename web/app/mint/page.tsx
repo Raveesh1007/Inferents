@@ -135,7 +135,7 @@ export default function Mint() {
                         <td>{m.label}</td>
                         <td><span className={`kind ${m.kind === "gateway" ? "gateway" : ""}`}>{m.kind === "gateway" ? "gateway-verified" : "model-verified"}</span></td>
                         <td className="num">{usd(m.cost / 1e6, 4)}</td>
-                        <td className="num">{m.secs} s</td>
+                        <td className="num">{m.secs == null ? "n/a" : `${m.secs} s`}</td>
                       </tr>
                     ))}
                   </tbody>
