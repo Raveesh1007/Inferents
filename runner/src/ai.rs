@@ -10,7 +10,8 @@ pub struct Ai {
     http: reqwest::Client,
     key: String,
     pub model: String,
-    signer: tokio::sync::OnceCell<Address>,
+    model_signer: tokio::sync::OnceCell<Address>,
+    gateway_signer: tokio::sync::OnceCell<Address>,
 }
 
 pub struct Thought {
@@ -23,27 +24,42 @@ pub struct Thought {
     pub response_hash: String,
     pub signature: String,
     pub cost_micro_usd: u64,
+    pub kind: &'static str,
+    pub label: &'static str,
+    pub request_body: String,
+    pub response_body: String,
 }
 
 impl Ai {
     pub fn new(key: String, model: String) -> Self {
-        Self { http: reqwest::Client::new(), key, model, signer: Default::default() }
+        Self { http: reqwest::Client::new(), key, model, model_signer: Default::default(), gateway_signer: Default::default() }
     }
 
-    async fn signing_address(&self) -> Result<Address> {
-        self.signer
-            .get_or_try_init(|| async {
-                let r: Value = self.http.get(format!("{API}/v1/attestation/report")).query(&[("model", self.model.as_str()), ("signing_algo", "ecdsa")]).send().await?.json().await?;
+    // Closed frontier models go through NEAR AI's gateway, which signs the relayed reply instead of the model itself.
+    pub fn is_gateway_model(model: &str) -> bool {
+        ["anthropic/", "openai/", "google/", "x-ai/"].iter().any(|p| model.starts_with(p))
+    }
+
+    // Closed models spend part of the budget on hidden reasoning before the visible reply.
+    pub fn default_max_tokens(model: &str) -> u32 {
+        if Self::is_gateway_model(model) { 6000 } else { 4000 }
+    }
+
+    async fn report_signer(&self, model: Option<&str>) -> Result<Address> {
+        let mut q = vec![("signing_algo", "ecdsa")];
+        q.extend(model.map(|m| ("model", m)));
+        let r: Value = self.http.get(format!("{API}/v1/attestation/report")).query(&q).send().await?.json().await?;
+        match model {
+            Some(_) => {
                 let list = r["model_attestations"].as_array().context("no model_attestations")?;
                 ensure!(list.len() == 1, "expected one model attestation, got {}", list.len());
                 Ok(list[0]["signing_address"].as_str().context("signing_address")?.parse()?)
-            })
-            .await
-            .copied()
+            }
+            None => Ok(r["gateway_attestation"]["signing_address"].as_str().context("gateway signing_address")?.parse()?),
+        }
     }
 
     pub async fn think(&self, system: &str, user: &str, max_tokens: u32) -> Result<Thought> {
-        let signer = self.signing_address().await?;
         // The signature covers these exact request bytes, so they are built once and sent verbatim.
         let req = serde_json::to_vec(&json!({
             "model": self.model,
@@ -62,6 +78,7 @@ impl Ai {
             .await?;
         ensure!(resp.status().is_success(), "completion failed: {}", resp.status());
         let request_id = resp.headers().get("inference-id").context("no inference-id header")?.to_str()?.to_owned();
+        let unattested = resp.headers().get("x-serving-provider").and_then(|v| v.to_str().ok()) == Some("non-attested");
         let bytes = resp.bytes().await?;
         let body: Value = serde_json::from_slice(&bytes)?;
         let chat_id = body["id"].as_str().context("completion id")?.to_owned();
@@ -71,9 +88,19 @@ impl Ai {
 
         let sig = self.signature(&chat_id).await?;
         let text = sig["text"].as_str().context("text")?;
-        ensure!(sig["signature_kind"] == "provider_tee" && text == format!("{}:{request_hash}:{response_hash}", self.model), "signature does not cover our exact bytes");
+        let (kind, label, signer, expected_text) = match sig["signature_kind"].as_str() {
+            Some("provider_tee") => ("ProviderTee", "model-verified", self.model_signer.get_or_try_init(|| self.report_signer(Some(&self.model))).await?, format!("{}:{request_hash}:{response_hash}", self.model)),
+            Some("gateway") => (
+                "Gateway",
+                if unattested { "gateway-verified, provider not attested" } else { "gateway-verified" },
+                self.gateway_signer.get_or_try_init(|| self.report_signer(None)).await?,
+                format!("{request_hash}:{response_hash}"),
+            ),
+            other => anyhow::bail!("unknown signature kind {other:?}"),
+        };
+        ensure!(text == expected_text, "signature does not cover our exact bytes");
         let raw = hex::decode(sig["signature"].as_str().context("signature")?.trim_start_matches("0x"))?;
-        ensure!(Signature::from_raw(&raw)?.recover_address_from_msg(text.as_bytes())? == signer, "signer is not the attested model key");
+        ensure!(Signature::from_raw(&raw)?.recover_address_from_msg(text.as_bytes())? == *signer, "signer is not the attested key");
 
         Ok(Thought {
             content: msg["content"].as_str().unwrap_or("").to_owned(),
@@ -85,6 +112,10 @@ impl Ai {
             request_hash,
             response_hash,
             signature: sig["signature"].as_str().unwrap_or_default().to_owned(),
+            kind,
+            label,
+            request_body: String::from_utf8(req)?,
+            response_body: String::from_utf8_lossy(&bytes).into_owned(),
         })
     }
 
