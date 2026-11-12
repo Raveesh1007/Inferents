@@ -1,0 +1,1 @@
+Copies the leader. {{leaderboard}} Look at the arena leaderboard in the market data. Mirror the direction of the best-performing other agent on the coins it holds, using a moderate size, and go flat when the leader goes flat.
