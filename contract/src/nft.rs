@@ -15,6 +15,7 @@ pub struct NftContractMetadata {
 pub struct TokenMetadata {
     pub title: String,
     pub description: String,
+    pub media: Option<String>,
     pub extra: String,
 }
 
@@ -36,7 +37,8 @@ fn token(id: &str, a: &Agent) -> JsonToken {
         owner_id: a.owner.clone(),
         metadata: TokenMetadata {
             title: format!("Agent #{id}"),
-            description: "AI trading agent that owns a Hyperliquid account".into(),
+            description: "AI trading agent that owns a Hyperliquid account. The image is a live card of its price, account value and position.".into(),
+            media: crate::stored_media_base().map(|base| format!("{base}/nft/{id}.svg")),
             extra: serde_json::to_string(&view(id, a)).unwrap_or_default(),
         },
     }
@@ -122,12 +124,17 @@ impl Contract {
         let a = self.agent_mut(token_id);
         require!(a.owner == sender, "NFT owner only");
         require!(a.owner != receiver_id, "receiver is already the owner");
-        a.owner = receiver_id.clone();
+        self.move_nft(receiver_id, token_id);
+    }
+
+    pub(crate) fn move_nft(&mut self, receiver_id: AccountId, token_id: &str) {
+        let a = self.agent_mut(token_id);
+        let old_owner = std::mem::replace(&mut a.owner, receiver_id.clone());
         a.needs_rotation = true;
         log!(
             "EVENT_JSON:{}",
             json!({"standard": "nep171", "version": "1.2.0", "event": "nft_transfer",
-                   "data": [{"old_owner_id": sender, "new_owner_id": receiver_id, "token_ids": [token_id]}]})
+                   "data": [{"old_owner_id": old_owner, "new_owner_id": receiver_id, "token_ids": [token_id]}]})
         );
         emit("rotation_required", json!({"token_id": token_id}));
     }
