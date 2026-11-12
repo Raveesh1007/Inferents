@@ -1,7 +1,7 @@
-use crate::near::Near;
+﻿use crate::near::Near;
 use anyhow::{Context, Result, bail};
 use ethers::signers::{LocalWallet, Signer};
-use hyperliquid_rust_sdk::{BaseUrl, ExchangeClient, ExchangeDataStatus, ExchangeResponseStatus, MarketCloseParams, MarketOrderParams};
+use hyperliquid_rust_sdk::{BaseUrl, ClientLimit, ClientOrder, ClientOrderRequest, ExchangeClient, ExchangeDataStatus, ExchangeResponseStatus, MarketOrderParams};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -100,14 +100,10 @@ impl Hyperliquid {
         Ok(s["balances"].as_array().and_then(|b| b.iter().find(|x| x["coin"] == "USDC")).map_or(0.0, |x| f(&x["total"])))
     }
 
-    // Realised P&L from fills (net of fees) plus unrealised on open positions.
+    // Realised P&L from fills, net of fees. Unrealised profit is already in the account value, so it is not counted here.
     pub async fn pnl(&self, address: &str) -> Result<f64> {
         let fills = self.info(json!({"type": "userFills", "user": address})).await?;
-        let realised: f64 = fills.as_array().map_or(0.0, |a| a.iter().map(|x| f(&x["closedPnl"]) - f(&x["fee"])).sum());
-        let unrealised: f64 = self.info(json!({"type": "clearinghouseState", "user": address})).await?["assetPositions"]
-            .as_array()
-            .map_or(0.0, |a| a.iter().map(|p| f(&p["position"]["unrealizedPnl"])).sum());
-        Ok(realised + unrealised)
+        Ok(fills.as_array().map_or(0.0, |a| a.iter().map(|x| f(&x["closedPnl"]) - f(&x["fee"])).sum()))
     }
 
     async fn asset_meta(&self, coin: &str) -> Result<(u32, u32)> {
@@ -143,7 +139,10 @@ impl Hyperliquid {
 }
 
 fn fill(r: ExchangeResponseStatus) -> Result<OrderFill> {
-    let ExchangeResponseStatus::Ok(resp) = r else { bail!("exchange rejected the order") };
+    let resp = match r {
+        ExchangeResponseStatus::Ok(resp) => resp,
+        ExchangeResponseStatus::Err(e) => bail!("exchange rejected the order: {e}"),
+    };
     match resp.data.context("no order data")?.statuses.into_iter().next().context("no order status")? {
         ExchangeDataStatus::Filled(o) => Ok(OrderFill { order_id: o.oid.to_string(), avg_px: o.avg_px.parse()?, size: o.total_sz.parse()? }),
         ExchangeDataStatus::Resting(o) => Ok(OrderFill { order_id: o.oid.to_string(), avg_px: 0.0, size: 0.0 }),
@@ -151,9 +150,36 @@ fn fill(r: ExchangeResponseStatus) -> Result<OrderFill> {
     }
 }
 
-impl Venue for Hyperliquid {
-    async fn positions(&self, ctx: &AgentCtx) -> Result<PerpState> {
-        let s = self.info(json!({"type": "clearinghouseState", "user": ctx.address})).await?;
+impl Hyperliquid {
+    // Hourly funding rate per coin, from the same asset contexts the tradable check reads.
+    pub async fn funding_rates(&self, coins: &[String]) -> Result<Vec<(String, f64)>> {
+        let r = self.info(json!({"type": "metaAndAssetCtxs"})).await?;
+        let universe = r[0]["universe"].as_array().context("universe")?;
+        let ctxs = r[1].as_array().context("asset contexts")?;
+        Ok(coins.iter().filter_map(|c| Some((c.clone(), f(&ctxs[universe.iter().position(|u| u["name"] == c.as_str())?]["funding"])))).collect())
+    }
+
+    // The contract marks a key approved when it signs the request; Hyperliquid's own list is the truth.
+    // extraAgents lists only named keys and ours are unnamed, so ask Hyperliquid what role the key itself has.
+    pub async fn is_agent_approved(&self, account: &str, agent: &str) -> bool {
+        let r = self.info(json!({"type": "userRole", "user": agent})).await.unwrap_or_default();
+        r["role"] == "agent" && r["data"]["user"].as_str().is_some_and(|u| u.eq_ignore_ascii_case(account))
+    }
+
+    // Intents (and the testnet stand-in) pay into spot; margin only counts in perps. Moving whatever is in spot makes an interrupted conversion heal itself.
+    pub async fn sweep_spot(&self, token_id: &str, address: &str) -> Result<Option<String>> {
+        let spot = self.spot_usdc(address).await?;
+        if spot < 1.0 {
+            return Ok(None);
+        }
+        let amount = format!("{:.2}", (spot * 100.0).floor() / 100.0);
+        self.contract_admin("usd_class_transfer", json!({"token_id": token_id, "amount": amount, "to_perp": true})).await?;
+        Ok(Some(amount))
+    }
+
+    // Public on Hyperliquid: anyone can read any account's positions.
+    pub async fn perp_state(&self, address: &str) -> Result<PerpState> {
+        let s = self.info(json!({"type": "clearinghouseState", "user": address})).await?;
         let positions = s["assetPositions"].as_array().map_or(vec![], |a| {
             a.iter()
                 .map(|p| &p["position"])
@@ -162,6 +188,12 @@ impl Venue for Hyperliquid {
                 .collect()
         });
         Ok(PerpState { account_value: f(&s["marginSummary"]["accountValue"]), withdrawable: f(&s["withdrawable"]), positions })
+    }
+}
+
+impl Venue for Hyperliquid {
+    async fn positions(&self, ctx: &AgentCtx) -> Result<PerpState> {
+        self.perp_state(&ctx.address).await
     }
 
     async fn place_order(&self, ctx: &AgentCtx, coin: &str, is_buy: bool, notional_usd: f64, leverage: u32) -> Result<OrderFill> {
@@ -186,8 +218,15 @@ impl Venue for Hyperliquid {
         let ex = self.exchange(&ctx.wallet).await?;
         let mut out = vec![];
         for p in state.positions {
+            // The SDK's market_close looks the position up under the signing key's address, which for a trade-only agent key is not the NFT's account, so close with an explicit reduce-only IOC order.
+            let (sz_decimals, _) = self.asset_meta(&p.coin).await?;
+            let is_buy = p.size < 0.0;
+            let px = round_px(self.mid(&p.coin).await? * if is_buy { 1.05 } else { 0.95 }, sz_decimals);
             let r = ex
-                .market_close(MarketCloseParams { asset: &p.coin, sz: None, px: None, slippage: Some(0.05), cloid: None, wallet: None })
+                .order(
+                    ClientOrderRequest { asset: p.coin.clone(), is_buy, reduce_only: true, limit_px: px, sz: p.size.abs(), cloid: None, order_type: ClientOrder::Limit(ClientLimit { tif: "Ioc".into() }) },
+                    None,
+                )
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             out.push(fill(r)?);
@@ -205,10 +244,33 @@ impl Venue for Hyperliquid {
     }
 }
 
+// Hyperliquid prices carry at most 5 significant figures and 6 - szDecimals decimals.
+fn round_px(px: f64, sz_decimals: u32) -> f64 {
+    let by_sig = {
+        let scale = 10f64.powi(4 - px.abs().log10().floor() as i32);
+        (px * scale).round() / scale
+    };
+    let scale = 10f64.powi((6 - sz_decimals as i32).max(0));
+    (by_sig * scale).round() / scale
+}
+
 pub fn wallet_from_hex(hex: &str) -> Result<LocalWallet> {
     Ok(hex.trim().parse()?)
 }
 
 pub fn address_of(w: &LocalWallet) -> String {
     format!("{:?}", w.address())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::round_px;
+
+    #[test]
+    fn prices_keep_five_significant_figures_and_the_decimal_limit() {
+        assert_eq!(round_px(78234.56, 5), 78235.0);
+        assert_eq!(round_px(2107.8765, 4), 2107.9);
+        assert_eq!(round_px(157.34567, 2), 157.35);
+        assert_eq!(round_px(0.123456789, 0), 0.12346);
+    }
 }
