@@ -4,8 +4,10 @@ use inferents_runner::strategy::{self, COINS, Plan};
 use serde_json::{Value, json};
 use std::time::Instant;
 
-const MODELS: [&str; 9] = [
+const MODELS: [&str; 11] = [
     "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated",
+    "Qwen/Qwen3.8-27B-abliterated",
     "deepseek/deepseek-v3.2",
     "moonshotai/kimi-k2.6",
     "moonshotai/kimi-k3",
@@ -40,10 +42,12 @@ async fn main() -> Result<()> {
 
     let allowed: Vec<String> = ["BTC", "ETH"].iter().map(|s| s.to_string()).collect();
     println!("{:<40} {:>7} {:>9}  {}", "model", "secs", "µUSD", "result");
-    for model in MODELS {
+    let picked: Vec<String> = std::env::args().skip(1).collect();
+    let models: Vec<String> = if picked.is_empty() { MODELS.iter().map(|m| m.to_string()).collect() } else { picked };
+    for model in models.iter().map(String::as_str) {
         let ai = Ai::new(key.clone(), model.to_owned());
         let t = Instant::now();
-        let r = ai.think(strategy::SYSTEM_PROMPT, &prompt, 1500).await;
+        let r = ai.think(strategy::SYSTEM_PROMPT, &prompt, Ai::default_max_tokens(model)).await;
         let secs = t.elapsed().as_secs_f32();
         match r {
             Ok(th) => {
@@ -55,7 +59,7 @@ async fn main() -> Result<()> {
                         Plan::Hold(w) => format!("HOLD ({w}; {})", d.reason.chars().take(60).collect::<String>()),
                     },
                 };
-                println!("{model:<40} {secs:>7.1} {:>9}  verified | {verdict}", th.cost_micro_usd);
+                println!("{model:<40} {secs:>7.1} {:>9}  {} | {verdict}", th.cost_micro_usd, th.label);
             }
             Err(e) => println!("{model:<40} {secs:>7.1} {:>9}  FAILED: {}", "-", format!("{e:#}").chars().take(110).collect::<String>()),
         }
