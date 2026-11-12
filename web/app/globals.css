@@ -51,7 +51,8 @@ a.arrow:hover::before { transform: translateX(2px); }
 .site-header { position: absolute; inset: 0 0 auto 0; z-index: 20; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 24px 32px; }
 .site-header nav { display: flex; gap: 28px; }
 .site-header .right { display: flex; justify-content: flex-end; align-items: center; gap: 16px; }
-.wordmark { font-family: var(--font-mark), sans-serif; font-size: 20px; letter-spacing: 0.02em; color: var(--text); }
+.wordmark { display: inline-flex; align-items: center; gap: 12px; font-family: var(--font-mark), sans-serif; font-size: 20px; letter-spacing: 0.02em; color: var(--text); }
+.wordmark img { border-radius: 7px; }
 .account { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Buttons: off-white with dark mono text; the accent stays out of the chrome. */
