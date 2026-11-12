@@ -8,6 +8,31 @@ Decide one action from the market data. Reply with a single JSON object and noth
 {\"action\":\"open_long\"|\"open_short\"|\"close\"|\"hold\",\"coin\":\"BTC\"|\"ETH\"|\"SOL\",\"size_pct\":1-100,\"reason\":\"one sentence\"}. \
 size_pct is the share of your allowed position size to use. Trade actively: with no open position, open one in the direction of the recent hourly trend; with an open position, close it if the trend has turned against it; hold only when closes are essentially flat.";
 
+// A strategy containing this marker is shown a public snapshot of the other agents each cycle.
+pub const LEADERBOARD_MARKER: &str = "{{leaderboard}}";
+
+pub fn system_prompt(strategy: Option<&str>) -> String {
+    match strategy {
+        Some(s) => format!("{SYSTEM_PROMPT}\n\nYour owner's strategy (follow it, within the JSON format above):\n{s}"),
+        None => SYSTEM_PROMPT.to_owned(),
+    }
+}
+
+const STRATEGY_INTRO: &str = "
+
+Your owner's strategy";
+
+// Viewing-key holders see the request without the owner's strategy text.
+pub fn redact_request(body: &str) -> String {
+    let Ok(mut v) = serde_json::from_str::<Value>(body) else { return "[unreadable request]".into() };
+    if let Some(c) = v["messages"][0]["content"].as_str() {
+        if let Some(i) = c.find(STRATEGY_INTRO) {
+            v["messages"][0]["content"] = Value::String(format!("{}{STRATEGY_INTRO}: [redacted]", &c[..i]));
+        }
+    }
+    v.to_string()
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Action {
     OpenLong,
@@ -33,6 +58,29 @@ pub enum Plan {
 
 // Reasoning models wrap the JSON in prose, so take the first balanced {...} that parses.
 pub fn parse_decision(content: &str) -> Option<Decision> {
+    find_json(content, from_json)
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Acquisition {
+    pub target: Option<String>,
+    pub reason: String,
+}
+
+// {"action":"buy","token_id":"7","reason":"..."} or {"action":"pass","reason":"..."}
+pub fn parse_acquisition(content: &str) -> Option<Acquisition> {
+    find_json(content, |v| match v["action"].as_str()? {
+        "buy" => Some(Acquisition { target: Some(v["token_id"].as_str().map(String::from).or_else(|| v["token_id"].as_u64().map(|n| n.to_string()))?), reason: v["reason"].as_str().unwrap_or("").to_owned() }),
+        "pass" => Some(Acquisition { target: None, reason: v["reason"].as_str().unwrap_or("").to_owned() }),
+        _ => None,
+    })
+}
+
+pub const ACQUISITION_PROMPT: &str = "Once per epoch you may spend part of your own credits to buy another agent from the arena, within your acquisition budget. \
+You get the buyer's view: each candidate's price, P&L, thinking spent and return on thought. Buy only if you expect the agent to earn more than its price. \
+Reply with a single JSON object and nothing else: {\"action\":\"buy\",\"token_id\":\"<id>\",\"reason\":\"one sentence\"} or {\"action\":\"pass\",\"reason\":\"one sentence\"}.";
+
+fn find_json<T>(content: &str, accept: impl Fn(&Value) -> Option<T>) -> Option<T> {
     let bytes = content.as_bytes();
     for (start, _) in content.match_indices('{') {
         let mut depth = 0;
@@ -43,7 +91,7 @@ pub fn parse_decision(content: &str) -> Option<Decision> {
                     depth -= 1;
                     if depth == 0 {
                         if let Ok(v) = serde_json::from_str::<Value>(&content[start..=start + i]) {
-                            if let Some(d) = from_json(&v) {
+                            if let Some(d) = accept(&v) {
                                 return Some(d);
                             }
                         }
@@ -150,5 +198,26 @@ mod tests {
         assert!(matches!(plan(&d(Action::OpenLong, "BTC", 10.0), 100.0, 3, &[pos("ETH")], &all()), Plan::Hold(_)));
         assert!(matches!(plan(&d(Action::Close, "BTC", 0.0), 100.0, 3, &[], &all()), Plan::Hold(_)));
         assert_eq!(plan(&d(Action::Close, "ETH", 0.0), 100.0, 3, &[pos("ETH")], &all()), Plan::Close { coin: "ETH".into() });
+    }
+}
+
+#[cfg(test)]
+mod redact_tests {
+    use super::*;
+
+    #[test]
+    fn redaction_hides_the_strategy_but_keeps_the_model_and_market_data() {
+        let body = serde_json::json!({"model": "m", "messages": [{"role": "system", "content": system_prompt(Some("secret plan"))}, {"role": "user", "content": "BTC 1"}]}).to_string();
+        let out = redact_request(&body);
+        assert!(!out.contains("secret plan") && out.contains("\"model\":\"m\"") && out.contains("BTC 1") && out.contains("[redacted]"));
+        assert_eq!(redact_request(&serde_json::json!({"messages": [{"content": "no strategy"}]}).to_string()).contains("no strategy"), true);
+    }
+
+    #[test]
+    fn acquisition_replies_parse_buy_and_pass() {
+        let buy = parse_acquisition("Thinking... {\"action\":\"buy\",\"token_id\":7,\"reason\":\"strong\"}").unwrap();
+        assert_eq!((buy.target.as_deref(), buy.reason.as_str()), (Some("7"), "strong"));
+        assert_eq!(parse_acquisition("{\"action\":\"pass\",\"reason\":\"no\"}").unwrap().target, None);
+        assert!(parse_acquisition("{\"action\":\"open_long\"}").is_none());
     }
 }
