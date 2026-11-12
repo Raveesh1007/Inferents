@@ -1,0 +1,1 @@
+Funding fade. Read the funding rate per hour. When funding is strongly positive the crowd is long, so lean short; when it is strongly negative lean long. Ignore small funding values and hold flat instead. Close once funding normalises.
