@@ -74,6 +74,11 @@ impl Near {
         Ok(r["result"].clone())
     }
 
+    // True when `public_key` is a key of `account_id`, so a signature from it speaks for that account.
+    pub async fn has_access_key(&self, account_id: &str, public_key: &str) -> bool {
+        self.rpc("query", json!({"request_type": "view_access_key", "finality": "final", "account_id": account_id, "public_key": public_key})).await.is_ok()
+    }
+
     pub async fn view(&self, contract: &str, method: &str, args: Value) -> Result<Value> {
         let r = self
             .rpc("query", json!({"request_type": "call_function", "finality": "final", "account_id": contract,
