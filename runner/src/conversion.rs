@@ -31,11 +31,12 @@ impl Conversion {
         }
     }
 
-    pub async fn payout(&self, near: &Near, contract: &str, hl: &Hyperliquid, ctx: &AgentCtx, amount_micro: u64) -> Result<String> {
+    // method is "release_margin" (epoch end: credits + margin) or "fund_margin" (deposit split: margin only, any time).
+    pub async fn payout(&self, near: &Near, contract: &str, method: &str, hl: &Hyperliquid, ctx: &AgentCtx, amount_micro: u64) -> Result<String> {
         let http = reqwest::Client::new();
         match self {
             Conversion::Simulated { deposit_account, funder } => {
-                near.call(contract, "release_margin", json!({"token_id": ctx.token_id, "deposit_address": deposit_account}), 100, 0).await?;
+                near.call(contract, method, json!({"token_id": ctx.token_id, "deposit_address": deposit_account}), 100, 0).await?;
                 funder_pay(funder, hl, &ctx.address, amount_micro).await?;
                 hl.deposit(ctx, &usdc(amount_micro)).await?;
                 Ok(format!("released {} credits; funder paid the agent's Hyperliquid account (simulated); moved to perps", usdc(amount_micro)))
@@ -54,7 +55,7 @@ impl Conversion {
                 }
                 let q: Value = req.send().await?.json().await?;
                 let deposit = q["quote"]["depositAddress"].as_str().with_context(|| format!("no quote: {q}"))?.to_owned();
-                near.call(contract, "release_margin", json!({"token_id": ctx.token_id, "deposit_address": deposit}), 100, 0).await?;
+                near.call(contract, method, json!({"token_id": ctx.token_id, "deposit_address": deposit}), 100, 0).await?;
                 for _ in 0..60 {
                     let s: Value = http.get(format!("{ONE_CLICK}/status")).query(&[("depositAddress", deposit.as_str())]).send().await?.json().await?;
                     match s["status"].as_str() {
