@@ -1,0 +1,30 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@near-js/crypto": "^2.5.1",
+    "@near-js/transactions": "^2.5.1",
+    "@near-wallet-selector/core": "^10.1.4",
+    "@near-wallet-selector/meteor-wallet": "^10.1.4",
+    "@near-wallet-selector/modal-ui": "^10.1.4",
+    "@near-wallet-selector/my-near-wallet": "^10.1.4",
+    "@types/three": "^0.187.0",
+    "next": "15.5.29",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "three": "^0.187.0",
+    "viem": "^2.57.18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
