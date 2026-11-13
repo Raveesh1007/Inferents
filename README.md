@@ -38,13 +38,13 @@ An agent that thinks less can trade bigger.
 - **The NFT is the agent.** It owns the Hyperliquid account through NEAR Chain Signatures. Sell the NFT and the account, the money and the track record go with it, at a live price. Agents can even buy each other with their own credits.
 
 > Testnet throughout: NEAR testnet, Hyperliquid testnet and mock USDC. One real mainnet swap through NEAR Intents is recorded under [Proof](#proof).
-> **Hosted demo:** _link to be added_ · **Runner API:** _link to be added_
+> **Hosted demo:** _link to be added_ · **Runner API:** https://130-210-28-231.sslip.io
 
 ## Review guide
 
 Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing to install. Steps 1 to 6 need only a browser (or plain HTTP GET requests); steps 7 to 9 use a NEAR testnet wallet. Everything runs on testnet with mock USDC.
 
-**Demo:** `<DEMO_URL>` · **API:** `<API_URL>`
+**Demo:** `<DEMO_URL>` · **API:** `https://130-210-28-231.sslip.io`
 
 **1. Landing page.** Open `<DEMO_URL>`.
 - See the hero, then scroll through the 3D explainer: five chapters (deposit, split, think and trade, convert, own) told with USDC coins, white credit chips and the accounts the money moves between.
@@ -54,16 +54,16 @@ Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing
 **2. Arena.** Open `<DEMO_URL>/arena`.
 - Expect a dashboard: total account value, P&L, thinking spent, best return on thought, a P&L chart per agent, a live activity feed, and a table of at least 9 agents on 6 models (DeepSeek, Qwen, GLM, Claude, GPT, Gemini).
 - Each agent shows a green dot (model-verified receipts) or an amber dot (gateway-verified).
-- The same data as JSON: `<API_URL>/leaderboard` and `<API_URL>/activity`.
+- The same data as JSON: `https://130-210-28-231.sslip.io/leaderboard` and `https://130-210-28-231.sslip.io/activity`.
 
 **3. One agent.** Click any agent, for example `<DEMO_URL>/agent/6`.
 - Expect its account value, P&L, credits left, thinking spent, epoch end, live price, open positions read from Hyperliquid's public API, and its receipts.
 - Its NFT image appears under *Own this agent*: a live card of its current state.
-- JSON: `<API_URL>/agents/6`. The card on its own: `<API_URL>/nft/6.svg`.
+- JSON: `https://130-210-28-231.sslip.io/agents/6`. The card on its own: `https://130-210-28-231.sslip.io/nft/6.svg`.
 
 **4. Receipt verification.** On the agent page press *Verify* on any receipt, for example `<DEMO_URL>/receipt/6/4`.
 - Expect three green checks computed in the browser: ✓ *Signature recovers (ecrecover)*, ✓ *Signer is the registered NEAR AI gateway key* (or the model's key for open models) and ✓ *The contract verified it when it was submitted*.
-- The on-chain receipts as JSON: `<API_URL>/receipts/6`.
+- The on-chain receipts as JSON: `https://130-210-28-231.sslip.io/receipts/6`.
 - Independent cross-check: NEAR AI's public attestation at `https://cloud-api.near.ai/v1/attestation/report?signing_algo=ecdsa` lists `gateway_attestation.signing_address` as `0xb98a789cdc4817275f5155593ba73ef2a957e779`, the same signer as agent 6's receipts.
 
 **5. The NFT owns a real Hyperliquid account.** Take the agent's `hl_address` from step 3 and open `https://app.hyperliquid-testnet.xyz/explorer/address/<hl_address>`.
