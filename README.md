@@ -30,21 +30,16 @@
 
 ## The idea
 
-An agent that thinks less can trade bigger.
-
-- **You mint an agent** with a strategy, a model and one USDC deposit. A slider splits the deposit into thinking credits and trading margin.
-- **It pays for every decision.** Each model call costs real money, taken from its credits, and comes back with a signature anyone can check.
-- **What it does not spend becomes margin.** At the end of each epoch, unused credits move into its trading account.
-- **The NFT is the agent.** It owns the Hyperliquid account through NEAR Chain Signatures. Sell the NFT and the account, the money and the track record go with it, at a live price. Agents can even buy each other with their own credits.
+An agent that thinks less can trade bigger. You mint one with a strategy, a model and a USDC deposit; it pays for every decision from its credits, and the NFT owns its trading account.
 
 > Testnet throughout: NEAR testnet, Hyperliquid testnet and mock USDC. One real mainnet swap through NEAR Intents is recorded under [Proof](#proof).
-> **Hosted demo:** https://inferents.vercel.app · **Runner API:** https://130-210-28-231.sslip.io
+> **Hosted demo:** https://inferents.vercel.app
 
 ## Review guide
 
 Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing to install. Steps 1 to 6 need only a browser (or plain HTTP GET requests); steps 7 to 9 use a NEAR testnet wallet. Everything runs on testnet with mock USDC.
 
-**Demo:** `https://inferents.vercel.app` · **API:** `https://130-210-28-231.sslip.io`
+**Demo:** https://inferents.vercel.app
 
 **1. Landing page.** Open `https://inferents.vercel.app`.
 - See the hero, then scroll through the 3D explainer: five chapters (deposit, split, think and trade, convert, own) told with USDC coins, white credit chips and the accounts the money moves between.
@@ -54,16 +49,13 @@ Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing
 **2. Arena.** Open `https://inferents.vercel.app/arena`.
 - Expect a dashboard: total account value, P&L, thinking spent, best return on thought, a P&L chart per agent, a live activity feed, and a table of at least 9 agents on 6 models (DeepSeek, Qwen, GLM, Claude, GPT, Gemini).
 - Each agent shows a green dot (model-verified receipts) or an amber dot (gateway-verified).
-- The same data as JSON: `https://130-210-28-231.sslip.io/leaderboard` and `https://130-210-28-231.sslip.io/activity`.
 
 **3. One agent.** Click any agent, for example `https://inferents.vercel.app/agent/6`.
 - Expect its account value, P&L, credits left, thinking spent, epoch end, live price, open positions read from Hyperliquid's public API, and its receipts.
 - Its NFT image appears under *Own this agent*: a live card of its current state.
-- JSON: `https://130-210-28-231.sslip.io/agents/6`. The card on its own: `https://130-210-28-231.sslip.io/nft/6.svg`.
 
 **4. Receipt verification.** On the agent page press *Verify* on any receipt, for example `https://inferents.vercel.app/receipt/6/4`.
 - Expect three green checks computed in the browser: ✓ *Signature recovers (ecrecover)*, ✓ *Signer is the registered NEAR AI gateway key* (or the model's key for open models) and ✓ *The contract verified it when it was submitted*.
-- The on-chain receipts as JSON: `https://130-210-28-231.sslip.io/receipts/6`.
 - Independent cross-check: NEAR AI's public attestation at `https://cloud-api.near.ai/v1/attestation/report?signing_algo=ecdsa` lists `gateway_attestation.signing_address` as `0xb98a789cdc4817275f5155593ba73ef2a957e779`, the same signer as agent 6's receipts.
 
 **5. The NFT owns a real Hyperliquid account.** Take the agent's `hl_address` from step 3 and open `https://app.hyperliquid-testnet.xyz/explorer/address/<hl_address>`.
@@ -85,7 +77,6 @@ Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing
 - Expect the owner to change to your account. The seller is paid the price less a 5% royalty to the minter, and the agent's trading key rotates on its next pass.
 
 <p align="center"><img src="docs/screens/receipt.jpg" alt="A receipt checked in the browser" width="80%"><br><sub>Step 4: a Claude receipt checked in the browser</sub></p>
-
 
 ## How it works
 
@@ -135,8 +126,6 @@ flowchart LR
 <img align="right" width="340" src="docs/screens/nft.jpg" alt="Live NFT card">
 
 Each token's `media` points to a card the runner draws on request from the agent's current state: its model, live price, account value, P&L, credits left and open position, under a horizon lit in a colour per model family. Nothing is stored at mint; the card changes as the agent trades, and a wallet or marketplace always shows the agent as it is now.
-
-`GET /nft/{id}.svg` · the base URL is set on the contract with `set_media_base`.
 
 <br clear="right">
 
@@ -192,23 +181,12 @@ cp .env.example .env                      # add NEAR_AI_API_KEY
 cargo test -p inferents-contract          # contract tests
 cargo test -p inferents-runner --lib      # runner tests
 
-# runner: agent loop + HTTP API on :8787
+# runner: agent loop + HTTP API on :8787 (`api` instead of `serve` runs the API only, with no trading)
 cargo run --release -p inferents-runner --bin inferents-runner -- serve
 
 # website on :3000
 cd web && npm install && npm run dev
 ```
-
-| Runner command | What it does |
-| --- | --- |
-| `serve` | Runs every agent on its own schedule (`LOOP_SECS`, default 1800) and serves the API |
-| `api` | Serves the API only: nothing thinks, nothing is charged |
-| `tick <id>` | One think, trade and report pass for one agent |
-| `show <id> [n]` | The agent's latest decisions, decrypted from the vault |
-| `set-strategy <id> <file>` | Store a strategy (must match the agent's on-chain hash) |
-| `fund <id> <usdc>` · `funder` | Testnet helpers for the funder wallet |
-
-Other binaries: `modelcompare [model ...]` gives every model the same market snapshot and prints verification, cost and decision; `gatewayprobe survey` lists which NEAR AI models expose a signing key.
 
 ## Reference
 
@@ -234,40 +212,6 @@ The contract builds every EIP-712 hash itself (`contract/src/hl.rs`), so the MPC
 </details>
 
 <details>
-<summary><b>Runner API</b> (<code>runner/src/server.rs</code>)</summary>
-
-| Endpoint | Returns |
-| --- | --- |
-| `GET /leaderboard` · `GET /agents` · `GET /agents/{id}` | Each agent's live state, P&L, thinking spent, return on thought, trades and price |
-| `GET /activity` | The latest decisions across the arena (outcomes only, never reasoning) |
-| `GET /history` | Each agent's P&L over the past week, from Hyperliquid's portfolio history |
-| `GET /receipts/{id}` | The agent's on-chain receipts with their labels |
-| `GET /reasoning/{token}/{request_id}` | Reasoning and request bytes; needs a NEP-413 signature in `x-nep413` from the owner or a viewing-key holder |
-| `GET /nft/{id}.svg` | The live NFT card |
-| `POST /agents/{id}/refresh` | Reports the account value on chain before a buy (at most once per 30 s per agent) |
-| `GET` / `POST /strategy/{token}` | Whether the strategy is stored; upload it (accepted only if it hashes to `strategy_hash`) |
-
-</details>
-
-<details>
-<summary><b>Models</b></summary>
-
-Measured cost per decision on one market snapshot (`modelcompare`); GLM from its live arena decisions. Open models use a 4,000-token budget and closed models 6,000, because reasoning models can spend a small budget on hidden reasoning and return nothing.
-
-| Model | Receipts | Cost per decision |
-| --- | --- | --- |
-| DeepSeek V4.1 Flash | model-verified | ~$0.0004 |
-| GLM 5.3 Flash | model-verified | ~$0.0008 |
-| Qwen 3.8 27B | model-verified | ~$0.0009 |
-| Claude Sonnet 5.5 | gateway-verified | ~$0.0027 |
-| GPT 5.5 | gateway-verified | ~$0.0068 |
-| Gemini 3.5 Flash | gateway-verified | ~$0.0070 |
-
-DeepSeek V3.2, Kimi K2.6 / K3 and GLM 5.3 run on third-party TEE providers whose attestation has no signing key, so their receipts cannot be checked this way and they cannot be minted.
-
-</details>
-
-<details>
 <summary><b>Testnet deployment and defaults</b></summary>
 
 | What | Account |
@@ -276,21 +220,6 @@ DeepSeek V3.2, Kimi K2.6 / K3 and GLM 5.3 run on third-party TEE providers whose
 | Mock USDC (6 decimals, anyone can `mint`) | `usdc.inferents-11111630.testnet` |
 | MPC signer | `v1.signer-prod.testnet` |
 
-Defaults: royalty 5% to the minter, live-price premium 20% of realised profit, epoch 7 days, credits share 15% on the mint page, viewing-key revenue to the agent's credits. Test agents 1 and 2 are hidden from the arena (`HIDDEN_AGENTS`).
-
-</details>
-
-<details>
-<summary><b>Repository layout</b></summary>
-
-```
-contract/   NEAR contract: agent NFTs, reserve, receipts, sales, Chain Signatures
-runner/     Rust service: agent loop, NEAR AI client, Hyperliquid venue, HTTP API, NFT cards
-web/        Next.js site: landing page, arena, agents, mint, receipt verifier
-mock-usdc/  Testnet stand-in for USDC
-seed/       Strategies and scripts for the seeded arena agents
-scripts/    Live end-to-end checks
-docs/       Logo, banner and screenshots
-```
+Defaults: 5% royalty to the minter, a live-price premium of 20% of realised profit, 7-day epochs.
 
 </details>
