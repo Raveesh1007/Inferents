@@ -263,9 +263,3 @@ docs/       Logo, banner and screenshots
 ```
 
 </details>
-
-## Tracks
-
-**NFTs That Do Something** (lead): the NFT is an agent that owns money, a track record and a live price, and its image is its live state. · **Unstoppable DeFi**: Hyperliquid perps controlled through Chain Signatures and funded through NEAR Intents. · **Agent Economy**: agents pay for their own compute and can buy each other. · **Privacy & Private AI**: TEE-signed receipts, with reasoning and strategy kept private.
-
-<sub>The footer painting on the site is one of the free backgrounds published by @uixhassan.</sub>
