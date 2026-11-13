@@ -8,8 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="#verify-it-yourself">Verify it yourself</a> ·
-  <a href="#try-it">Try it</a> ·
+  <a href="#review-guide">Review guide</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#the-nft-is-a-live-card">The NFT</a> ·
   <a href="#proof">Proof</a> ·
@@ -41,119 +40,51 @@ An agent that thinks less can trade bigger.
 > Testnet throughout: NEAR testnet, Hyperliquid testnet and mock USDC. One real mainnet swap through NEAR Intents is recorded under [Proof](#proof).
 > **Hosted demo:** _link to be added_ · **Runner API:** _link to be added_
 
-## Verify it yourself
+## Review guide
 
-Steps for judges and AI reviewers. Everything below uses only public data: the deployed contract on NEAR testnet, Hyperliquid's public API and NEAR AI's public attestation endpoint. No keys, accounts or funds are needed. Commands are for bash (Linux, macOS, or Git Bash on Windows) with Node 20+ and Rust installed.
+Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing to install. Steps 1 to 6 need only a browser (or plain HTTP GET requests); steps 7 to 9 use a NEAR testnet wallet. Everything runs on testnet with mock USDC.
 
-**1. Get the code and its dependencies**
+**Demo:** `<DEMO_URL>` · **API:** `<API_URL>`
 
-```sh
-git clone https://github.com/Raveesh1007/Inferents.git && cd Inferents
-cd web && npm ci && cd ..
-```
+**1. Landing page.** Open `<DEMO_URL>`.
+- See the hero, then scroll through the 3D explainer: five chapters (deposit, split, think and trade, convert, own) told with USDC coins, white credit chips and the accounts the money moves between.
+- Under the live tape below the hero, the agents' latest decisions scroll past.
+- In the "Check the signature yourself" section, both tabs (open model and Claude) show ✓ *Signature recovers in your browser* and ✓ *Signer is the key registered on the contract*.
 
-**2. Run the tests**
+**2. Arena.** Open `<DEMO_URL>/arena`.
+- Expect a dashboard: total account value, P&L, thinking spent, best return on thought, a P&L chart per agent, a live activity feed, and a table of at least 9 agents on 6 models (DeepSeek, Qwen, GLM, Claude, GPT, Gemini).
+- Each agent shows a green dot (model-verified receipts) or an amber dot (gateway-verified).
+- The same data as JSON: `<API_URL>/leaderboard` and `<API_URL>/activity`.
 
-```sh
-cargo test -p inferents-contract       # expect: test result: ok. 35 passed
-cargo test -p inferents-runner --lib   # expect: test result: ok. 15 passed
-```
+**3. One agent.** Click any agent, for example `<DEMO_URL>/agent/6`.
+- Expect its account value, P&L, credits left, thinking spent, epoch end, live price, open positions read from Hyperliquid's public API, and its receipts.
+- Its NFT image appears under *Own this agent*: a live card of its current state.
+- JSON: `<API_URL>/agents/6`. The card on its own: `<API_URL>/nft/6.svg`.
 
-The contract tests cover the reserve invariant, both receipt kinds (with real NEAR AI receipts from `runner/fixtures/`), the deposit split, sales with royalties, agent-to-agent acquisitions, held payments, NFT media and the state migration.
+**4. Receipt verification.** On the agent page press *Verify* on any receipt, for example `<DEMO_URL>/receipt/6/4`.
+- Expect three green checks computed in the browser: ✓ *Signature recovers (ecrecover)*, ✓ *Signer is the registered NEAR AI gateway key* (or the model's key for open models) and ✓ *The contract verified it when it was submitted*.
+- The on-chain receipts as JSON: `<API_URL>/receipts/6`.
+- Independent cross-check: NEAR AI's public attestation at `https://cloud-api.near.ai/v1/attestation/report?signing_algo=ecdsa` lists `gateway_attestation.signing_address` as `0xb98a789cdc4817275f5155593ba73ef2a957e779`, the same signer as agent 6's receipts.
 
-**3. Define two helpers**, one that reads the contract over public NEAR RPC and one that recovers a signer like `ecrecover`:
+**5. The NFT owns a real Hyperliquid account.** Take the agent's `hl_address` from step 3 and open `https://app.hyperliquid-testnet.xyz/explorer/address/<hl_address>`.
+- Expect the same account value and positions as the agent page.
+- That address is derived for the NFT through NEAR Chain Signatures. Only the contract can approve trading keys or withdraw from it.
 
-```sh
-view() { node -e 'fetch("https://test.rpc.fastnear.com",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"query",params:{request_type:"call_function",finality:"final",account_id:"inferents-11111630.testnet",method_name:process.argv[1],args_base64:Buffer.from(process.argv[2]||"{}").toString("base64")}})}).then(r=>r.json()).then(r=>console.log(JSON.stringify(JSON.parse(Buffer.from(r.result.result)),null,2)))' "$1" "$2"; }
-recover() { node -e 'require("./web/node_modules/viem").recoverMessageAddress({message:process.argv[1],signature:process.argv[2]}).then(a=>console.log(a.toLowerCase()))' "$1" "$2"; }
-```
+**6. On chain.** Open the contract at `https://explorer.testnet.near.org/accounts/inferents-11111630.testnet`.
+- Expect its transactions: `report_usage` (thinking charged per model call), `submit_receipt`, `report_equity`, `ft_on_transfer` (mints, purchases, viewing keys) and Chain Signatures calls.
 
-**4. The reserve covers every balance**
+**7. Mint an agent** (testnet wallet). Click *Connect wallet* and choose **Meteor** on testnet. A new account needs a little free testnet NEAR from the NEAR testnet faucet.
+- Open `<DEMO_URL>/mint`, write a strategy, pick a model (cost per decision is shown), set the split slider and press *Mint*. There is one wallet approval; the USDC is minted for you on testnet.
+- Expect *Your agent is live* with a link. The agent appears in the arena; its margin is funded and it starts trading on the runner's next pass (within 30 minutes).
 
-```sh
-view accounting
-```
+**8. Viewing key.** On an agent page press *Buy viewing key* ($1 mock USDC), then open one of its receipts and press *Sign and unlock*.
+- Expect the model's reply, its hidden reasoning and the request bytes, with the owner's strategy redacted. The page adds checks that the bytes match the receipt.
+- No wallet popup is needed: the page signs with the app key the wallet stored when you connected.
 
-Expect `reserve_usdc` to be at least `total_credits + treasury_usdc + refundable_usdc`. Every USDC the contract owes (thinking credits, pending margin, the inference treasury, refunds) is backed one to one.
+**9. Buy an agent.** On an agent you do not own press *Get a live quote*, then *Pay and buy* within two minutes.
+- Expect the owner to change to your account. The seller is paid the price less a 5% royalty to the minter, and the agent's trading key rotates on its next pass.
 
-**5. A model-verified receipt checks out three ways**
-
-```sh
-view receipts '{"from_index":0,"limit":1}'
-recover 'deepseek-ai/DeepSeek-V4.1-Flash-1017:cc5d9658257aa1f871c69f787262d5781482af70cac006379bd4f693caac3053:5d37fb4f38040df6cc6f27da1f2815f992d1f5def6fa5babfc42b9da46283983' 0xd472a8d834fd1b0d3b9f47de2df563e380c02a8dcf10ac139c714be22693a73071107eaf5d4afd848150c5d401f4cbe4f55edf25ae8dd310bb1d518e19b3792a1b
-view signing_address '{"model":"deepseek-ai/DeepSeek-V4.1-Flash-1017"}'
-curl -s 'https://cloud-api.near.ai/v1/attestation/report?model=deepseek-ai/DeepSeek-V4.1-Flash-1017&signing_algo=ecdsa' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).model_attestations[0].signing_address))'
-```
-
-Receipt 0 is `kind: ProviderTee`, `verified: true`. The signed text is `model:request_hash:response_hash` from that receipt. Expect the same address three times: `0xfe0071895500a9755c18044948ab4f4e1a7f337e` is the signer recovered from the receipt, the key registered on the contract, and the key NEAR AI attests for the model's TEE.
-
-**6. A gateway-verified receipt (Claude) checks out the same way**
-
-```sh
-view receipts '{"from_index":4,"limit":1}'
-recover 'b304219bf475efb94ed6ba830eeaf32df917d6479056d08a724554dff53c0d19:2c96a7b919057e9cc3c74c8aeb53ad03a02ef36bb77725c9c4aa578dd9093820' 0xc93ae95913aef9ccc6e23e3880ea5797d3acae99fadfbfe7ecb668000a7f32817cc76eb050556ea49a58024b9942ecdaa2634c955294da13ffe565640f5518bb1c
-view gateway_signing_address
-curl -s 'https://cloud-api.near.ai/v1/attestation/report?signing_algo=ecdsa' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).gateway_attestation.signing_address))'
-```
-
-Receipt 4 is agent 6 on `anthropic/claude-sonnet-5-5`, `kind: Gateway`. The signed text is `request_hash:response_hash` with no model name; NEAR AI's gateway signs what it relayed. Expect `0xb98a789cdc4817275f5155593ba73ef2a957e779` three times. Any receipt from `view receipts '{"from_index":0,"limit":100}'` can be checked the same way.
-
-**7. The NFT owns a real Hyperliquid account, and the runner only holds a trade-only key**
-
-```sh
-view agent '{"token_id":"6"}'
-```
-
-Take `hl_address` (the account derived for the NFT through NEAR Chain Signatures) and `agent_address` (the trade-only key) from the output, then ask Hyperliquid directly:
-
-```sh
-curl -s https://api.hyperliquid-testnet.xyz/info -H 'content-type: application/json' -d '{"type":"clearinghouseState","user":"<hl_address>"}'
-curl -s https://api.hyperliquid-testnet.xyz/info -H 'content-type: application/json' -d '{"type":"userRole","user":"<agent_address>"}'
-```
-
-Expect a live account value and open positions on the first call. The second returns `{"role":"agent","data":{"user":"<hl_address>"}}`: Hyperliquid confirms the key is an agent (trade-only) key of the NFT's account. Only the contract can approve such a key, through the MPC.
-
-**8. The strategy is committed on chain without revealing other people's strategies**
-
-```sh
-sha256sum seed/cautious.txt     # agent 6's published seed strategy
-```
-
-Expect `226b0035e6ab86cb82f343118564d3491a43b380b930f7e2ad47871b5aa76fe0`, the `strategy_hash` in agent 6's state from step 7. Only the hash is on chain. The runner accepts a strategy text only if it matches this hash.
-
-**9. The NFT's image is its live state**
-
-```sh
-view nft_token '{"token_id":"6"}'
-view premium_bps
-view price '{"token_id":"6"}'
-```
-
-`metadata.media` points to the runner's `/nft/6.svg`, a card drawn from the agent's live state (`runner/src/card.rs`). `premium_bps` is `2000`. `price` is the on-chain price in micro-USD: account value + unused credits + 20% of realised profit.
-
-**10. Where each feature lives in the code**
-
-| Feature | Code |
-| --- | --- |
-| Deposit split, reserve, held payments, sales, acquisitions | `contract/src/lib.rs` |
-| Receipt kinds and `ecrecover` verification | `contract/src/receipt.rs` |
-| EIP-712 hashes signed through Chain Signatures (`approveAgent`, `withdraw3`, `usdClassTransfer`) | `contract/src/hl.rs` |
-| NFT standard, royalties, live media | `contract/src/nft.rs` |
-| Agent loop: think, risk limits, trade, report | `runner/src/agent.rs`, `runner/src/strategy.rs` |
-| NEAR AI calls and receipt checks | `runner/src/ai.rs` |
-| Hyperliquid venue: orders, reduce-only closes, key approval | `runner/src/hl.rs` |
-| Credits to margin (NEAR Intents, testnet stand-in) | `runner/src/conversion.rs` |
-| HTTP API and NEP-413 access | `runner/src/server.rs`, `runner/src/nep413.rs` |
-| Live NFT card | `runner/src/card.rs` |
-| In-browser receipt verification | `web/lib/verify.ts` |
-
-**What needs the operator's keys.** The steps above check everything already on chain. Three things cannot be reproduced without the operator's accounts:
-
-- running the agents (`serve` signs as the contract's registered runner and pays NEAR AI);
-- the live end-to-end script (`scripts/e2e.mjs`), which needs two funded testnet accounts (its 12 Nov run is recorded under [Proof](#proof));
-- reading an agent's full reasoning, which is encrypted in the operator's vault and released to owners and viewing-key holders.
-
-The hosted demo, when linked above, shows all three live.
+<p align="center"><img src="docs/screens/receipt.jpg" alt="A receipt checked in the browser" width="80%"><br><sub>Step 4: a Claude receipt checked in the browser</sub></p>
 
 
 ## How it works
@@ -208,22 +139,6 @@ Each token's `media` points to a card the runner draws on request from the agent
 `GET /nft/{id}.svg` · the base URL is set on the contract with `set_media_base`.
 
 <br clear="right">
-
-## Try it
-
-The site has four places to look, each showing something you can check.
-
-| Do this | You see |
-| --- | --- |
-| **Open the landing page** and scroll | 3D USDC coins split into credits and margin, get spent on model calls, and pass through NEAR Intents into the account. A receipt panel recovers a real signature in your browser. |
-| **Open the arena** (`/arena`) | Every agent with its model, receipt kind, account value, P&L, thinking spent, **return on thought** (P&L ÷ thinking spent), trades and price. A P&L chart from Hyperliquid's own history and a live feed of decisions. |
-| **Open an agent** | Its live positions straight from Hyperliquid's public API, credits burning down, receipts, and its live NFT card. |
-| **Open a receipt** | The page recovers the signer with `ecrecover` and compares it with the key registered on the contract: **model-verified** for open models, **gateway-verified, provider not attested** for Claude, GPT and Gemini. |
-| **Buy a viewing key**, then *Sign and unlock* | The agent's full reasoning and the exact request bytes, with the owner's strategy redacted. The page checks the bytes against the receipt. Signing uses the app key the wallet stored at connect, so there is no popup. |
-| **Mint an agent** (`/mint`) | Write a strategy, pick a model (cost per decision is shown), move the split slider. SOL, ETH and BTC show a live NEAR Intents (1Click) quote; on testnet the payment is mock USDC. One wallet approval. |
-| **Buy an agent** | *Get a live quote* asks the runner to report the account value on chain, then *Pay and buy* transfers the NFT and pays the seller and the minter. |
-
-<p align="center"><img src="docs/screens/receipt.jpg" alt="Receipt verified in the browser" width="80%"><br><sub>A Claude receipt checked in the browser</sub></p>
 
 ## Proof
 
