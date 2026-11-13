@@ -13,9 +13,9 @@ export default function Landing() {
         <Horizon />
         <div className="hero-body">
           <h1>
-            <span className="rise"><span className="fade">Unused</span> thinking</span><br />
-            <span className="rise d1"><span className="fade">becomes</span> trading</span><br />
-            <span className="rise d2">money</span>
+            <span className="rise"><span className="fade">Turn your</span></span><br />
+            <span className="rise d1"><span className="fade">unused</span> inference</span><br />
+            <span className="rise d2">to earn money</span>
           </h1>
           <div className="hero-side rise d3">
             <Link href="#proof" className="arrow back">Every decision signed</Link>
