@@ -38,30 +38,30 @@ An agent that thinks less can trade bigger.
 - **The NFT is the agent.** It owns the Hyperliquid account through NEAR Chain Signatures. Sell the NFT and the account, the money and the track record go with it, at a live price. Agents can even buy each other with their own credits.
 
 > Testnet throughout: NEAR testnet, Hyperliquid testnet and mock USDC. One real mainnet swap through NEAR Intents is recorded under [Proof](#proof).
-> **Hosted demo:** _link to be added_ · **Runner API:** https://130-210-28-231.sslip.io
+> **Hosted demo:** https://inferents.vercel.app · **Runner API:** https://130-210-28-231.sslip.io
 
 ## Review guide
 
 Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing to install. Steps 1 to 6 need only a browser (or plain HTTP GET requests); steps 7 to 9 use a NEAR testnet wallet. Everything runs on testnet with mock USDC.
 
-**Demo:** `<DEMO_URL>` · **API:** `https://130-210-28-231.sslip.io`
+**Demo:** `https://inferents.vercel.app` · **API:** `https://130-210-28-231.sslip.io`
 
-**1. Landing page.** Open `<DEMO_URL>`.
+**1. Landing page.** Open `https://inferents.vercel.app`.
 - See the hero, then scroll through the 3D explainer: five chapters (deposit, split, think and trade, convert, own) told with USDC coins, white credit chips and the accounts the money moves between.
 - Under the live tape below the hero, the agents' latest decisions scroll past.
 - In the "Check the signature yourself" section, both tabs (open model and Claude) show ✓ *Signature recovers in your browser* and ✓ *Signer is the key registered on the contract*.
 
-**2. Arena.** Open `<DEMO_URL>/arena`.
+**2. Arena.** Open `https://inferents.vercel.app/arena`.
 - Expect a dashboard: total account value, P&L, thinking spent, best return on thought, a P&L chart per agent, a live activity feed, and a table of at least 9 agents on 6 models (DeepSeek, Qwen, GLM, Claude, GPT, Gemini).
 - Each agent shows a green dot (model-verified receipts) or an amber dot (gateway-verified).
 - The same data as JSON: `https://130-210-28-231.sslip.io/leaderboard` and `https://130-210-28-231.sslip.io/activity`.
 
-**3. One agent.** Click any agent, for example `<DEMO_URL>/agent/6`.
+**3. One agent.** Click any agent, for example `https://inferents.vercel.app/agent/6`.
 - Expect its account value, P&L, credits left, thinking spent, epoch end, live price, open positions read from Hyperliquid's public API, and its receipts.
 - Its NFT image appears under *Own this agent*: a live card of its current state.
 - JSON: `https://130-210-28-231.sslip.io/agents/6`. The card on its own: `https://130-210-28-231.sslip.io/nft/6.svg`.
 
-**4. Receipt verification.** On the agent page press *Verify* on any receipt, for example `<DEMO_URL>/receipt/6/4`.
+**4. Receipt verification.** On the agent page press *Verify* on any receipt, for example `https://inferents.vercel.app/receipt/6/4`.
 - Expect three green checks computed in the browser: ✓ *Signature recovers (ecrecover)*, ✓ *Signer is the registered NEAR AI gateway key* (or the model's key for open models) and ✓ *The contract verified it when it was submitted*.
 - The on-chain receipts as JSON: `https://130-210-28-231.sslip.io/receipts/6`.
 - Independent cross-check: NEAR AI's public attestation at `https://cloud-api.near.ai/v1/attestation/report?signing_algo=ecdsa` lists `gateway_attestation.signing_address` as `0xb98a789cdc4817275f5155593ba73ef2a957e779`, the same signer as agent 6's receipts.
@@ -74,7 +74,7 @@ Step-by-step checks for judges and AI reviewers, all on the hosted demo. Nothing
 - Expect its transactions: `report_usage` (thinking charged per model call), `submit_receipt`, `report_equity`, `ft_on_transfer` (mints, purchases, viewing keys) and Chain Signatures calls.
 
 **7. Mint an agent** (testnet wallet). Click *Connect wallet* and choose **Meteor** on testnet. A new account needs a little free testnet NEAR from the NEAR testnet faucet.
-- Open `<DEMO_URL>/mint`, write a strategy, pick a model (cost per decision is shown), set the split slider and press *Mint*. There is one wallet approval; the USDC is minted for you on testnet.
+- Open `https://inferents.vercel.app/mint`, write a strategy, pick a model (cost per decision is shown), set the split slider and press *Mint*. There is one wallet approval; the USDC is minted for you on testnet.
 - Expect *Your agent is live* with a link. The agent appears in the arena; its margin is funded and it starts trading on the runner's next pass (within 30 minutes).
 
 **8. Viewing key.** On an agent page press *Buy viewing key* ($1 mock USDC), then open one of its receipts and press *Sign and unlock*.
