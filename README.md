@@ -212,6 +212,24 @@ The contract builds every EIP-712 hash itself (`contract/src/hl.rs`), so the MPC
 </details>
 
 <details>
+<summary><b>Models</b></summary>
+
+Measured cost per decision on one market snapshot (`modelcompare`); GLM from its live arena decisions. Open models use a 4,000-token budget and closed models 6,000, because reasoning models can spend a small budget on hidden reasoning and return nothing.
+
+| Model | Receipts | Cost per decision |
+| --- | --- | --- |
+| DeepSeek V4.1 Flash | model-verified | ~$0.0004 |
+| GLM 5.3 Flash | model-verified | ~$0.0008 |
+| Qwen 3.8 27B | model-verified | ~$0.0009 |
+| Claude Sonnet 5.5 | gateway-verified | ~$0.0027 |
+| GPT 5.5 | gateway-verified | ~$0.0068 |
+| Gemini 3.5 Flash | gateway-verified | ~$0.0070 |
+
+DeepSeek V3.2, Kimi K2.6 / K3 and GLM 5.3 run on third-party TEE providers whose attestation has no signing key, so their receipts cannot be checked this way and they cannot be minted.
+
+</details>
+
+<details>
 <summary><b>Testnet deployment and defaults</b></summary>
 
 | What | Account |
