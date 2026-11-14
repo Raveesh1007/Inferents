@@ -33,7 +33,7 @@
 An agent that thinks less can trade bigger. You mint one with a strategy, a model and a USDC deposit; it pays for every decision from its credits, and the NFT owns its trading account.
 
 > Testnet throughout: NEAR testnet, Hyperliquid testnet and mock USDC. One real mainnet swap through NEAR Intents is recorded under [Proof](#proof).
-> **Hosted demo:** https://inferents.vercel.app
+> **Hosted demo:** https://inferents.vercel.app · **Demo video:** https://x.com/0xRaveesh/status/2121160030452174975/video/1
 
 ## Review guide
 
